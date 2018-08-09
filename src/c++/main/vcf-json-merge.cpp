@@ -25,11 +25,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /**
- * \brief Index-based depth estimation for BAM and CRAM
+ * \brief Merge JSON and VCF files
  *
- * \file idxdepth.cpp
+ * \file vcf-json-merge.cpp
  * \author Peter Krusche
- * \email pkrusche@illumina.com
+ * \email pkrusche@gmail.com
  *
  */
 
@@ -61,20 +61,17 @@ using std::string;
 int main(int argc, char const* argv[])
 {
     po::options_description desc("Allowed options");
-    desc.add_options()("help,h", "produce help message")("bam,b", po::value<string>(), "BAM / CRAM input file")(
-        "output,o", po::value<string>(), "Output file name. Will output to stdout if omitted.")(
-        "output-bins,O", po::value<string>(),
-        "Output binned coverage in tsv format.")("reference,r", po::value<string>(), "FASTA with reference genome")(
-        "include-regex,I", po::value<string>()->default_value(""), "Regex to identify contigs to include")(
-        "autosome-regex", po::value<string>()->default_value("(chr)?[1-9][0-9]?"),
-        "Regex to identify autosome chromosome names (default: '(chr)?[1-9][0-9]?'")(
-        "sex-chromosome-regex", po::value<string>()->default_value("(chr)?[XY]?"),
-        "Regex to identify sex chromosome names (default: '(chr)?[XY]?'")(
-        "threads", po::value<int>()->default_value(std::thread::hardware_concurrency()),
-        "Number of threads to use for parallel alignment.")(
-        "log-level", po::value<string>()->default_value("info"), "Set log level (error, warning, info).")(
-        "log-file", po::value<string>()->default_value(""), "Log to a file instead of stderr.")(
-        "log-async", po::value<bool>()->default_value(true), "Enable / disable async logging.");
+    // clang-format off
+    desc.add_options()
+        ("help,h", "produce help message")
+        ("input-vcf,v", po::value<string>(), "Input VCF file. Must contain GRMPY_ID field to allow matching of records.")
+        ("input-json,j", po::value<string>(), "Input JSON file, must be output from grmpy.")
+        ("output,o", po::value<string>(), "Output file name. Will output to stdout if omitted.")
+        ("reference,r", po::value<string>(), "FASTA with reference genome")
+        ("log-level", po::value<string>()->default_value("info"), "Set log level (error, warning, info).")
+        ("log-file", po::value<string>()->default_value(""), "Log to a file instead of stderr.")
+        ("log-async", po::value<bool>()->default_value(true), "Enable / disable async logging.");
+    // clang-format on
 
     po::variables_map vm;
     std::shared_ptr<spdlog::logger> logger;
@@ -94,16 +91,26 @@ int main(int argc, char const* argv[])
             vm["log-level"].as<string>().c_str());
         logger = LOG();
 
-        string bam_path;
-        if (vm.count("bam") != 0u)
+        string vcf_path;
+        if (vm.count("input-vcf") != 0u)
         {
-            bam_path = vm["bam"].as<string>();
-            logger->info("BAM: {}", bam_path);
-            assertFileExists(bam_path);
+            vcf_path = vm["input-vcf"].as<string>();
+            logger->info("VCF: {}", vcf_path);
+            assertFileExists(vcf_path);
         }
         else
         {
-            error("ERROR: File with variant specification is missing.");
+            error("ERROR: VCF File with variants is missing.");
+        }
+
+        string json_path;
+        if (vm.count("input-json") != 0u)
+        {
+            json_path = vm["input-json"].as<string>();
+        }
+        else
+        {
+            error("ERROR: JSON File with variants is missing.");
         }
 
         string reference_path;
@@ -125,50 +132,14 @@ int main(int argc, char const* argv[])
             logger->info("Output path: {}", output_path);
         }
 
-        string output_path_bins;
-        if (vm.count("output-bins") != 0u)
-        {
-            output_path_bins = vm["output-bins"].as<string>();
-            logger->info("Output path for binned coverage: {}", output_path_bins);
-        }
-
-        Parameters parameters(bam_path, reference_path);
-        parameters.set_include_regex(vm["include-regex"].as<string>());
-        parameters.set_autosome_regex(vm["autosome-regex"].as<string>());
-        parameters.set_sex_chromosome_regex(vm["sex-chromosome-regex"].as<string>());
-        parameters.set_threads(vm["threads"].as<int>());
-
-        Json::Value output = idxdepth::estimateDepths(parameters);
-
         if (output_path.empty())
         {
-            std::cout << common::writeJson(output);
+            output_path = "-";
         }
         else
         {
             std::ofstream output_stream(output_path);
             output_stream << common::writeJson(output, false);
-        }
-
-        if (!output_path_bins.empty())
-        {
-            std::vector<idxdepth::IndexBin> bins;
-            idxdepth::getIndexBins(bam_path, bins);
-
-            std::ofstream bin_output(output_path_bins);
-
-            std::list<std::string> header{
-                "id", "CHROM", "POS", "END", "SLICES", "OVERLAPPING_BYTES", "ADJUSTED_BYTES", "NORMALIZED_DEPTH"
-            };
-
-            bin_output << boost::algorithm::join(header, "\t") << endl;
-
-            for (auto const& bin : bins)
-            {
-                bin_output << bin.bin_id << "\t" << bin.chrom << "\t" << bin.start + 1 << "\t" << bin.end + 1 << "\t"
-                           << bin.slices << "\t" << bin.overlapping_bytes << "\t" << bin.adjusted_bytes << "\t"
-                           << bin.normalized_depth << endl;
-            }
         }
     }
     catch (const std::exception& e)
