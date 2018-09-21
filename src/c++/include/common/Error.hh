@@ -186,6 +186,11 @@ static inline void assertFileExists(const std::string& path_str)
     {
         return;
     }
+    // allow GS paths.
+    if (path_str.substr(0, 5) == "gs://")
+    {
+        return;
+    }
     // allow http(s) paths.
     if (path_str.substr(0, 7) == "http://" || path_str.substr(0, 8) == "https://")
     {
