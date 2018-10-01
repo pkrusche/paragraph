@@ -24,7 +24,7 @@ import logging
 import pysam  # pylint: disable=E0401
 import intervaltree
 
-from grm.helpers import parse_region
+from grm.helpers import parse_region, reverse_complement
 from grm.vcfgraph.graphContainer import GraphContainer
 
 
@@ -160,8 +160,16 @@ class VCFGraph:
             if not (alt_samples or allele_graph):
                 continue  # Skip alleles not used in any haplotype
             if alt == "<DEL>":
-                ref_sequence = self.ref_fasta.fetch(self.chrom, vcf.pos-1, vcf.stop).upper()
+                ref_sequence = self.ref_fasta.fetch(self.chrom, vcf.pos - 1, vcf.stop).upper()
                 self.add_alt(vcf.pos, vcf.stop, ref_sequence, "", alt_samples)
+            elif alt == "<INV>":
+                ref_sequence = self.ref_fasta.fetch(self.chrom, vcf.pos - 1, vcf.stop).upper()
+                reverse_ref_sequence = reverse_complement(ref_sequence)
+                self.add_alt(vcf.pos, vcf.stop, ref_sequence, reverse_ref_sequence, alt_samples)
+            elif alt == "<DUP>":
+                duplicated_sequence = self.ref_fasta.fetch(self.chrom, vcf.pos - 2, vcf.pos - 1).upper()
+                duplicated_sequence = self.ref_fasta.fetch(self.chrom, vcf.pos - 1, vcf.stop).upper()
+                self.add_alt(vcf.pos - 1, vcf.pos - 1, ref_sequence, ref_sequence + duplicated_sequence, alt_samples)
             elif alt == "<INS>":
                 i_ref_start = vcf.pos
                 i_ref_end = vcf.stop
