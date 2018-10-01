@@ -63,3 +63,10 @@ def load_json(filename):
     else:
         f = open(filename, "rt")
     return json.load(f)
+
+
+def reverse_complement(sequence):
+    """ Reverse-complement a DNA sequence
+    """
+    trans = str.maketrans("ACGTacgt", "TGCAtgca")
+    return sequence[::-1].translate(trans)
